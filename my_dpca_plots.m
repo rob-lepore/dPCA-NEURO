@@ -8,7 +8,7 @@ close all;
 
 % File to load/save dPCA results
 data_save_file = "my_dpca_data";
-load_from_file = true; % If true, skip dPCA and load from file above
+load_from_file = false; % If true, skip dPCA and load from file above
 
 if ~load_from_file
     data_Path = 'C:\Users\rober\OneDrive\Documents\Uni\Bioinformatics\Neurosciences\project\V6A_mef24\V6A_mef24\';
