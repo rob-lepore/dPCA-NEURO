@@ -2,7 +2,7 @@ clear
 close all
 clc
 
-data_Path="C:\Users\rober\OneDrive\Desktop\Uni\Bioinformatics\Neurosciences\project\V6a_mef24\V6A_mef24\";
+data_Path="C:\Users\rober\OneDrive\Documents\Uni\Bioinformatics\Neurosciences\project\V6A_mef24\V6A_mef24\";
 cells_in_Directory = dir(data_Path);
 cells_in_Directory ([1,2],:) = [];
 

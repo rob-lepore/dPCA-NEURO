@@ -2,14 +2,16 @@ clear;
 clc;
 close all;
 
-%% From D_dpca_Reaching.m *************************************************
+%% Execute DPCA
 
-% Get data
-data_save_file = "my_dpca_data"; % file to load/save dPCA results
-load_from_file = true; % true if data is already in saved in a file
+% From D_dpca_Reaching.m 
+
+% File to load/save dPCA results
+data_save_file = "my_dpca_data";
+load_from_file = true; % If true, skip dPCA and load from file above
 
 if ~load_from_file
-    data_Path = 'C:\Users\rober\OneDrive\Desktop\Uni\Bioinformatics\Neurosciences\project\V6a_mef24\V6A_mef24\';
+    data_Path = 'C:\Users\rober\OneDrive\Documents\Uni\Bioinformatics\Neurosciences\project\V6A_mef24\V6A_mef24\';
     cells_in_Directory = dir(data_Path);
     cells_in_Directory ([1,2],:) = [];
     
@@ -21,26 +23,26 @@ if ~load_from_file
    
     % Compute firing rates
     [firingRates, trialNum] = A_general_calculate_firing_rates_dpca(data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name);
-    firingRatesAverage = mean(firingRates, 5); %nanmean
+    trialNum = squeeze(trialNum(:,:,1));
+    % Pick NEAR hand position only and average over trials
+    firingRates = squeeze(firingRates(:,:,1,:,:));
+    firingRatesAverage = mean(firingRates, 4);
 
-    % dPCA
     disp(['dPCA with regularization'])
     
-    % Time is marginalization #3
-    combinedParams = {{1, [1 3]}, {2, [2 3]}, {3}, {[1 2], [1 2 3]}};
+    combinedParams = {{1, [1 2]}, {2}};
     num_comp = 15;
-    
     optimalLambda = dpca_optimizeLambda(firingRatesAverage, firingRates, trialNum, dataname, ...
         'combinedParams', combinedParams, ...
         'simultaneous', ifSimultaneousRecording, ...
-        'numRep', 2, ...  % (2) increase this number to ~10 for better accuracy ***
+        'numRep', 10, ...
         'filename', 'tmp_optimalLambdas.mat', ...
         'display', false);
     
     Cnoise = dpca_getNoiseCovariance(firingRatesAverage, ...
         firingRates, trialNum, 'simultaneous', ifSimultaneousRecording);
     
-    [W,V,whichMarg] = dpca(firingRatesAverage, num_comp, ... % numComp=20
+    [W,V,whichMarg] = dpca(firingRatesAverage, num_comp, ...
         'combinedParams', combinedParams, ...
         'lambda', optimalLambda, ...
         'Cnoise', Cnoise);
@@ -49,7 +51,7 @@ if ~load_from_file
     'combinedParams', combinedParams);
 
     if data_save_file~=""
-        save(data_save_file, "W", "whichMarg","firingRatesAverage", "num_comp", "explVar");
+        save(data_save_file, "W", "V", "whichMarg","firingRatesAverage", "num_comp", "explVar");
     end
 else
     if data_save_file~=""
@@ -60,68 +62,70 @@ else
     end
 end
 
-%**************************************************************************
-
-% Select dPCs relative to time marginalization
-timeMarg = find(whichMarg == 3); 
+timeMarg = find(whichMarg == 2); 
 timeMargExplVar = explVar.componentVar(timeMarg);
 
-[num_neurons, num_stimuli, num_decisions, num_time_points] = size(firingRatesAverage);
+[num_neurons, num_stimuli, num_time_points] = size(firingRatesAverage);
 
-%% From dpca_plot.m *******************************************************
-X = firingRatesAverage(:,:)';
-Xcen = bsxfun(@minus, X, mean(X));
-dPCs = Xcen * W;
-dPCs = reshape(dPCs', num_comp, num_stimuli, num_decisions, num_time_points);
-%**************************************************************************
-
-%% Plot normalized mean spike count on each time dPC **********************
-fig = figure('Position', [100,-50,600,591]);
 epochNames = {'Fixation', 'Plan', 'Reach', 'Hold'};
 epochTimes = [1 1000; 1631 2331; 2332 2592; 2593 3392];
-timeMarg = find(whichMarg == 3); 
 
-for j=1:length(timeMarg)
-    marg = timeMarg(j);
-    for i=1:length(epochTimes)
-        epochName = epochNames(i);
+% Decode into dPCs
+X = firingRatesAverage(:,:)';
+global_neuron_mean = mean(X, 1);
+Xcen = bsxfun(@minus, X, global_neuron_mean);
+dPCs = Xcen * W;
+g_means = mean(dPCs, 1);                               
+g_stds  = std(dPCs, 0, 1); 
+
+%% Gradient maps
+
+nInterp = 100;           % resolution for smooth interpolation
+colorRange = [-2 2]; % fixed color range for all plots
+nRows = length(timeMarg);  % number of components
+nCols = length(epochTimes); % number of epochs
+
+figure('Position', [100 100 1200 900]);
+
+for j = 1:nRows
+    marg = timeMarg(j);  % current component
+
+    for i = 1:nCols
         epochTime = epochTimes(i,:);
-        nmsc_3x3 = stimuli_grid_dpca(firingRatesAverage, W, epochTime(1), epochTime(2), marg);
-        if j==1
-            plotTitle = epochNames(i);
-        else
-            plotTitle = "";
+        nmsc_3x3 = stimuli_grid_dpca(firingRatesAverage, W, ...
+                                     epochTime(1), epochTime(2), marg, ...
+                                     global_neuron_mean, g_means, g_stds);
+
+        % --- Smooth interpolation ---
+        [X, Y] = meshgrid(1:3, 1:3);
+        [XX, YY] = meshgrid(linspace(1,3,nInterp), linspace(1,3,nInterp));
+        interp_values = interp2(X, Y, nmsc_3x3, XX, YY, 'linear');
+
+        % --- Plot in the correct subplot ---
+        subplot(nRows, nCols, (j-1)*nCols + i);
+        imagesc(interp_values, colorRange);
+        colormap(jet);  % or your custom colormap
+        axis square;
+        axis xy;
+        set(gca, 'XTick', [], 'YTick', []);
+
+        % Title only for first row
+        if j == 1
+            title(epochNames{i}, 'FontSize', 12);
         end
-        gradientmap(nmsc_3x3, 'title', plotTitle, 'subp_params', [4 5 (j-1)*5+i], 'withCb', false);
+
+        % Label rows with component number
+        if i == 1
+            ylabel(sprintf('Comp %d', marg), 'FontSize', 12);
+        end
     end
 end
 
-subplot(3,5,5);
-custom_cmap = [0 0 255; 115 164 255; 128 255 183; 251 218 83; 255 255 0] / 255; 
-n_colors = 256;
-cmap = interp1(linspace(1, n_colors, size(custom_cmap, 1)), custom_cmap, 1:n_colors, 'linear');
-cb = colorbar();
-colormap(cmap);
-caxis([0,1]);
-set(cb, 'Ticks', [0,1]);
-set(cb, 'TickLabels', {'-', '+'});
-ylabel(cb, sprintf('Normalized mean\nspike count'));
-cb.Label.Rotation = -90;
-ax = gca;
-pos = ax.Position;
-axis off;
-cb.Position = [pos(1) pos(2) 0.012 pos(4)]; 
-cb.Label.Position = [1.809776013547724,0.498269949127866,0];
 
-%exportgraphics(fig, 'gradientMaps.pdf', 'ContentType', 'vector');
-%set(fig, 'Color', 'none');
+%% Exaplained variance %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%print(fig, 'gradientMaps.png', '-dpng', '-r500', '-opengl');
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Bar plot with projected variances %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fig = figure('Position', [100,-50,645,328]);
+% Bar plot with projected variances
+figure('Position', [100,-50,645,328]);
 axBar = subplot(1,1,1);
 hold on
 axis([0 num_comp+1 0 12.5])
@@ -135,16 +139,11 @@ for idx = 1:numel(b)
     b(idx).FaceColor = margColours(idx,:);
 end 
 
-caxis([1 length(margColours)+256]);
+clim([1 length(margColours)+256]);
 set(gca, 'FontSize', 14);
 
-%print(fig, 'barPlot.png', '-dpng', '-r500', '-image');
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Pie Chart %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fig = figure;
+% Pie chart with total explained variance
+figure;
 axPie = subplot(1,1,1);
 
 d = explVar.totalMarginalizedVar / explVar.totalVar * 100;
@@ -155,7 +154,7 @@ while sum(roundedD) < 100
 end
 
 margColours = [23 100 171; 187 20 25; 150 150 150; 114 97 171]/256;
-margNames = {'Target', 'Hand', 'Condition-independent', 'T/H Interaction'};
+margNames = {'Target', 'Condition-independent'};
 
 for i=1:length(d)
     margNamesPerc{i} = [margNames{i} ' ' num2str(roundedD(i)) '%'];
@@ -173,8 +172,8 @@ end
 numSegments = length(d);
 numColours = size(margColours, 1);
 for k = 1:numSegments
-    if strcmp(get(p(2*k-1), 'Type'), 'patch') % Handle patch segments
-        colorIndex = mod(k-1, numColours) + 1; % Loop through colors if needed
+    if strcmp(get(p(2*k-1), 'Type'), 'patch') 
+        colorIndex = mod(k-1, numColours) + 1; 
         set(p(2*k-1), 'FaceColor', margColours(colorIndex, :));
     end
 end
@@ -182,51 +181,29 @@ end
 lgd = legend(margNamesPerc, 'Location', 'bestoutside');
 set(lgd, 'FontSize', 14);
 
-%print(fig, 'pieChart.png', '-dpng', '-r500', '-image');
 
+%% Scatter Plot %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+scatterdata = zeros(length(timeMarg), length(epochNames), num_stimuli);
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Scatter Plot %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-g_sc = [];
-g_means = [];
-g_stds = [];
-for j=1:length(timeMarg)
-    marg = timeMarg(j);
-    all_meanSpikeCount = [];
-    for i=1:length(epochNames)
-        epochData = firingRatesAverage(:,:,:,epochTimes(i,1):epochTimes(i,2));
-        [num_neurons, num_stimuli, num_decisions, num_time_points] = size(epochData);
-        num_comp = 15;
-        X = epochData(:,:)';
-        Xcen = bsxfun(@minus, X, mean(X));
-        dPCs = Xcen * W;
-        dPCs = reshape(dPCs', num_comp, num_stimuli, num_decisions, num_time_points);
-        dPCmarg = squeeze(dPCs(marg, :, :, :));
-        dPCmarg_near = squeeze(dPCmarg(:, 1, :));
-        meanSpikeCount = mean(dPCmarg_near, 2);
-        all_meanSpikeCount = [all_meanSpikeCount; meanSpikeCount]; 
-    end
-    % mean and std for each dPC
-    g_means = [g_means; mean(all_meanSpikeCount)];
-    g_stds = [g_stds; std(all_meanSpikeCount)];
-    g_sc = [g_sc; all_meanSpikeCount];
-end
-
-
-scatterdata = [];
 for j = 1:length(timeMarg)
-    marg = timeMarg(j);
-    
-    for i = 1:length(epochNames)
-        s = ((j-1)*36+1)+(i-1)*9;
-        e = ((j-1)*36+1)+i*9-1;
-        normalizedMeanSpikeCount = (g_sc(s:e) - g_means(j)) / g_stds(j);
-        scatterdata(j, i, :) = normalizedMeanSpikeCount;%normalizedMeanSpikeCount; % Store normalized values
+    compIdx = timeMarg(j);           
+
+    for ei = 1:length(epochNames)
+        t0 = epochTimes(ei,1);
+        t1 = epochTimes(ei,2);
+
+        epochData = firingRatesAverage(:,:,t0:t1);    
+        X = reshape(epochData, num_neurons, [])';    
+
+        Xcen = bsxfun(@minus, X, global_neuron_mean); 
+        dPC_comp = Xcen * W(:, compIdx);                  
+        dPC_comp = reshape(dPC_comp, num_stimuli, []);      
+        meanSpikeCount = mean(dPC_comp, 2);            
+
+        normalized = (meanSpikeCount - g_means(compIdx)) ./ g_stds(compIdx);
+        scatterdata(j, ei, :) = normalized(:)';
     end
 end
-
-x = 1:length(epochNames);
 
 colors = [
     0.8500, 0.3250, 0.0980;  
@@ -236,7 +213,7 @@ colors = [
     0.3010, 0.7450, 0.9330;  
     0.6350, 0.0780, 0.1840;  
     0.0000, 0.4470, 0.7410;  
-    0.8500, 0.3250, 0.0980;  
+    0.8500, 0.3250, 0.7980;  
     0.8, 0.6, 0.4;           
 ];
 
@@ -268,7 +245,8 @@ for plotIdx = 1:4
 end
 
 hold off;
-%print(fig, 'scatterPlot.png', '-dpng', '-r500', '-image');
+
+
 
 
 %% scatter legend
@@ -296,5 +274,4 @@ set(gca, 'YTick', [1, 2, 3], 'YTickLabel', {'Near', 'Intermediate', 'Far'});
 % Add grid lines
 grid on;
 
-hold off
-
+hold off;
