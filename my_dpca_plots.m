@@ -78,17 +78,18 @@ dPCs = Xcen * W;
 g_means = mean(dPCs, 1);                               
 g_stds  = std(dPCs, 0, 1); 
 
-%% Gradient maps
+%% Gradient maps %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-nInterp = 100;           % resolution for smooth interpolation
-colorRange = [-2 2]; % fixed color range for all plots
 nRows = length(timeMarg);  % number of components
 nCols = length(epochTimes); % number of epochs
 
 figure('Position', [100 100 1200 900]);
+nInterp = 100;           
+pad_frac = 0.5;          
+colorRange = [-2 2];  
 
 for j = 1:nRows
-    marg = timeMarg(j);  % current component
+    marg = timeMarg(j);
 
     for i = 1:nCols
         epochTime = epochTimes(i,:);
@@ -96,30 +97,39 @@ for j = 1:nRows
                                      epochTime(1), epochTime(2), marg, ...
                                      global_neuron_mean, g_means, g_stds);
 
-        % --- Smooth interpolation ---
         [X, Y] = meshgrid(1:3, 1:3);
         [XX, YY] = meshgrid(linspace(1,3,nInterp), linspace(1,3,nInterp));
         interp_values = interp2(X, Y, nmsc_3x3, XX, YY, 'linear');
 
-        % --- Plot in the correct subplot ---
         subplot(nRows, nCols, (j-1)*nCols + i);
-        imagesc(interp_values, colorRange);
-        colormap(jet);  % or your custom colormap
+        hold on;
+
+        imagesc([1 3], [1 3], interp_values, colorRange); 
         axis square;
-        axis xy;
-        set(gca, 'XTick', [], 'YTick', []);
+        set(gca,'XTick',1:3,'YTick',1:3,'XTickLabel',{},'YTickLabel',{});
+        set(gca,'TickLength',[0 0]);
 
-        % Title only for first row
+        % Add equal padding around gradient
+        xlim([1-pad_frac 3+pad_frac]);
+        ylim([1-pad_frac 3+pad_frac]);
+
+        plot(X(:), Y(:), 'k+', 'MarkerSize', 7, 'LineWidth', 1.5);
+
         if j == 1
-            title(epochNames{i}, 'FontSize', 12);
+            title(epochNames{i}, 'FontSize', 11);
+        end
+        if i == 1
+            ylabel(sprintf('dPC #%d [%.1f%%]', marg, timeMargExplVar(j)), 'FontSize', 11, 'FontWeight', 'bold');
         end
 
-        % Label rows with component number
-        if i == 1
-            ylabel(sprintf('Comp %d', marg), 'FontSize', 12);
-        end
+        colormap(parula);
+        clim(colorRange);
+        hold off;
     end
 end
+
+cb = colorbar('Position', [0.93, 0.1, 0.015, 0.8]);
+ylabel(cb, 'Normalized mean spike count', 'FontSize', 11);
 
 
 %% Exaplained variance %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -164,11 +174,10 @@ p = pie(d, ones(size(d)));
 
 for k = 1:length(p)
     if strcmp(get(p(k), 'Type'), 'text')
-        set(p(k), 'String', ''); % Hide the text
+        set(p(k), 'String', ''); 
     end
 end
 
-% Set colors
 numSegments = length(d);
 numColours = size(margColours, 1);
 for k = 1:numSegments
@@ -220,7 +229,6 @@ colors = [
 
 fig = figure("Position",[0 0 1660 468]);
 
-
 for plotIdx = 1:4
     subplot(1, 4, plotIdx);
     hold on;
@@ -247,9 +255,8 @@ end
 hold off;
 
 
+% Scatter legend
 
-
-%% scatter legend
 x = [1, 2, 3]; % 1: Left, 2: Center, 3: Right
 y = [1, 2, 3]; % 1: Near, 2: Intermediate, 3: Far
 figure;
