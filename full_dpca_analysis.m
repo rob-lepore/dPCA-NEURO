@@ -82,7 +82,7 @@ marginalizationsExplVar = explVar.componentVar(marginalizations);
 nRows = length(marginalizations);  % number of components
 nCols = length(epochNames); % number of epochs
 
-figure('Position', [100 100 1200 900]);
+figure;
 nInterp = 100;           
 pad_frac = 0.5;          
 colorRange = [-2 2];  
@@ -137,13 +137,14 @@ ylabel(cb, 'Normalized mean spike count', 'FontSize', 11);
 %% Exaplained variance %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Bar plot with projected variances
-figure('Position', [100,-50,645,328]);
+figure;
 axBar = subplot(1,1,1);
 hold on
-axis([0 num_comp+1 0 12.5])
+num_comp_bars = 15;
+axis([0 num_comp_bars+1 0 Inf])
 ylabel('Component variance (%)')
 xlabel('Number of components')
-b = bar(explVar.margVar(:,1:num_comp)' , 'stacked', 'BarWidth', 0.75);
+b = bar(explVar.margVar(:,1:num_comp_bars)' , 'stacked', 'BarWidth', 0.75);
 
 margColours = [23 100 171; 187 20 25; 150 150 150; 114 97 171]/256;
 
@@ -219,7 +220,8 @@ colors = [
 ];
 
 
-fig = figure("Position",[0 0 1660 468]);
+% fig = figure("Position",[0 0 1660 468]);
+figure;
 
 nPlots = length(timeMarg);
 for plotIdx = 1:nPlots
@@ -245,7 +247,7 @@ for plotIdx = 1:nPlots
     hold off;
 end
 
-hold off;
+% hold off;
 
 
 % Scatter legend
