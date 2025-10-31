@@ -1,8 +1,4 @@
-clear;
-clc;
-close all;
-
-%% Execute DPCA
+function [angles_deg] = full_dpca_analysis(data_Path, hand_position)
 
 % File to load/save dPCA results
 data_save_file = "my_dpca_data";
@@ -12,7 +8,6 @@ epochNames = {'Fixation', 'Plan', 'Reach', 'Hold'};
 
 
 if ~load_from_file
-    data_Path = 'C:\Users\rober\OneDrive\Documents\Uni\Bioinformatics\Neurosciences\project\V6A_mef24\V6A_mef24\';
     cells_in_Directory = dir(data_Path);
     cells_in_Directory ([1,2],:) = [];
 
@@ -20,8 +15,6 @@ if ~load_from_file
     epochTimes = [0 700; 500 200; 200 500; 0 700];   
     sDF_bin_Size = 100;              
     
-
-    % Preallocate a cell array to store results for each epoch
     numEpochs = numel(epochEvent);
     firingRates_all = cell(1, numEpochs);
 
@@ -32,48 +25,19 @@ if ~load_from_file
         [firingRates, trialNum] = A_general_calculate_firing_rates_dpca( ...
             data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name);
     
-        % Keep only NEAR hand position (target = 1)
-        firingRates = squeeze(firingRates(:,:,2,:,:));   % neurons × stimuli × time × trials
-        size(firingRates);
+        % Keep only one hand position
+        firingRates = squeeze(firingRates(:,:,hand_position,:,:));   % neurons × stimuli × time × trials
         % Average over trials
         firingRatesAverage = mean(firingRates, 4);        % neurons × stimuli × time
-        size(firingRatesAverage);
-        % Average over timepoints (ONLY FOR GEOMETRIC ANALYSIS)
-        %firingRatesAverageContext = mean(firingRatesAverage, 3);
-        %size(firingRatesAverageContext)
-    
-        % Store
-        %firingRates_all{e} = firingRatesAverageContext;
         firingRates_all{e} = firingRatesAverage;
     end
 
-    % meanMatrix = cat(2, firingRates_all{:});  % For geometric analysis
     firingRates_dpca = cat(4, firingRates_all{:});
-    size(firingRates_dpca)
     firingRates_dpca = permute(firingRates_dpca, [1 2 4 3]);
-    size(firingRates_dpca);
         
     combinedParams = {{1, [1 3]}, {2, [2 3]}, {[1 2], [1 2 3]}};
-    %combinedParams = {{1}, {2}, {1,2}};
 
     num_comp = 35;
-    
-    % dataname = 'V6A_mef24 - Saccade-Off';
-    % ifSimultaneousRecording = true;  
-    % optimalLambda = dpca_optimizeLambda(firingRatesAverage, firingRates, trialNum, dataname, ...
-    %     'combinedParams', combinedParams, ...
-    %     'simultaneous', ifSimultaneousRecording, ...
-    %     'numRep', 10, ...
-    %     'filename', 'tmp_optimalLambdas.mat', ...
-    %     'display', false);
-    % 
-    % Cnoise = dpca_getNoiseCovariance(firingRatesAverage, ...
-    %     firingRates, trialNum, 'simultaneous', ifSimultaneousRecording);
-    % 
-    % [W,V,whichMarg] = dpca(firingRatesAverage, num_comp, ...
-    %     'combinedParams', combinedParams, ...
-    %     'lambda', optimalLambda, ...
-    %     'Cnoise', Cnoise);
 
     [W,V,whichMarg] = dpca(firingRates_dpca, num_comp, ...
         'combinedParams', combinedParams);
@@ -112,8 +76,8 @@ num_comp = size(W,2);
 
 %% Gradient maps %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-marginalizations = [find(whichMarg == 1, 2, 'first'), find(whichMarg == 3, 2, 'first')];%[3 4 6 8];%[2 5 6 7];% timeMarg;
-marginalizationsExplVar = explVar.componentVar(marginalizations);%timeMargExplVar;
+marginalizations = [find(whichMarg == 1, 2, 'first'), find(whichMarg == 3, 2, 'first')];
+marginalizationsExplVar = explVar.componentVar(marginalizations);
 
 nRows = length(marginalizations);  % number of components
 nCols = length(epochNames); % number of epochs
@@ -122,8 +86,6 @@ figure('Position', [100 100 1200 900]);
 nInterp = 100;           
 pad_frac = 0.5;          
 colorRange = [-2 2];  
-
-
 
 for j = 1:nRows
     marg = marginalizations(j);
@@ -134,7 +96,7 @@ for j = 1:nRows
 
         % Arrange into 3×3 LED grid
         nmsc_3x3 = reshape(normalized, [3, 3])';
-        nmsc_3x3 = flipud(nmsc_3x3);  % flip vertically if needed
+        nmsc_3x3 = flipud(nmsc_3x3);
 
 
         [X, Y] = meshgrid(1:3, 1:3);
@@ -239,8 +201,6 @@ for j = 1:length(timeMarg)
 
     for ei = 1:length(epochNames)
         normalized = normalizedEpochSpikes(firingRates_all,W,ei,compIdx,global_neuron_mean, g_means, g_stds);
-
-        % Store in the 3D scatter matrix
         scatterdata(j, ei, :) = normalized(:)';
     end
 end
@@ -261,7 +221,7 @@ colors = [
 
 fig = figure("Position",[0 0 1660 468]);
 
-nPlots = length(timeMarg)
+nPlots = length(timeMarg);
 for plotIdx = 1:nPlots
     subplot(1, nPlots, plotIdx);
     hold on;
@@ -303,17 +263,13 @@ for i = 1:3
     end
 end
 
-% Set the axis limits
 xlim([0.5 3.5]);
 ylim([0.5 3.5]);
 
-% Set the axis labels
 set(gca, 'XTick', [1, 2, 3], 'XTickLabel', {'Left', 'Center', 'Right'});
 set(gca, 'YTick', [1, 2, 3], 'YTickLabel', {'Near', 'Intermediate', 'Far'});
 
-% Add grid lines
 grid on;
-
 hold off;
 
 
@@ -327,4 +283,4 @@ W_eye     = W(:, eyeIdx);      % neurons × 8
 W_context = W(:, contextIdx);  % neurons × 3
 
 angles = subspacea(W_eye, W_context);
-angles_deg = angles * 180 / pi
+angles_deg = angles * 180 / pi;
