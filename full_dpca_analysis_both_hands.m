@@ -1,12 +1,14 @@
-function [angles_deg] = full_dpca_analysis(data_Path, varargin)
+function [angles_deg] = full_dpca_analysis_both_hands(data_Path, varargin)
 
 p = inputParser;
-addParameter(p, 'hand_position', 0, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'epochTimes', [0 700; 500 200; 200 500; 0 700], @(x) isnumeric(x) && isvector(x));
 parse(p, varargin{:});
     
-hand_position = p.Results.hand_position;
 epochTimes = p.Results.epochTimes;
+
+%%
+% data_Path = 'C:\Users\rober\OneDrive\Documents\Uni\Bioinformatics\Neurosciences\project\V6A_mef24\V6A_mef24\';
+% epochTimes = [0 700; 500 200; 200 500; 0 700];
 
 
 % File to load/save dPCA results
@@ -21,7 +23,6 @@ if ~load_from_file
     cells_in_Directory ([1,2],:) = [];
 
     epochEvent = {'Saccade-Off', 'GO', 'KeyUp', 'TOUCH1'};
-    % epochTimes = [0 700; 500 200; 200 500; 0 700];   
     sDF_bin_Size = 100;              
     
     numEpochs = numel(epochEvent);
@@ -31,25 +32,23 @@ if ~load_from_file
         event_Name = epochEvent{e};
         time_Window = epochTimes(e, :);
     
-        if hand_position == 0 % dataset contains only one hand position
-            [firingRates, trialNum] = A_general_calculate_firing_rates_dpca( ...
-                data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name, 1);
-            firingRates = squeeze(firingRates(:,:,1,:,:));   % neurons × stimuli × time × trials
-        else
-            [firingRates, trialNum] = A_general_calculate_firing_rates_dpca( ...
-                data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name, 2);
-            firingRates = squeeze(firingRates(:,:,hand_position,:,:));
-        end
+        % neurons x stimuli x decisions x time x trials
+        [firingRates, trialNum] = A_general_calculate_firing_rates_dpca( ...
+            data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name, 2);
+        size(firingRates)
 
         % Average over trials
-        firingRatesAverage = mean(firingRates, 4);        % neurons × stimuli × time
+        firingRatesAverage = mean(firingRates, 5);  % neurons × stimuli x decision × time
         firingRates_all{e} = firingRatesAverage;
     end
 
-    firingRates_dpca = cat(4, firingRates_all{:});
-    firingRates_dpca = permute(firingRates_dpca, [1 2 4 3]);
+    firingRates_dpca = cat(5, firingRates_all{:});
+    firingRates_dpca = permute(firingRates_dpca, [1 2 3 5 4]); % neurons × stimuli x decision x epoch × time
+    size(firingRates_dpca)
         
-    combinedParams = {{1, [1 3]}, {2, [2 3]}, {[1 2], [1 2 3]}};
+    combinedParams = ...
+        {{1, [1 4]}, {2, [2 4]}, {3, [3 4]}, {[1 3], [1 3 4]}};
+    %     stimolo       mano       epoca        int. s/e
 
     num_comp = 35;
 
@@ -80,8 +79,12 @@ else
     end
 end
 
-
-timeMarg = find(whichMarg == 2);
+whichMarg
+% 1: stimolo
+% 2: mano
+% 3: epoca
+% 4: interazione a 3
+timeMarg = find(whichMarg == 3);
 timeMarg = timeMarg(1:3);
 timeMargExplVar = explVar.componentVar(timeMarg);
 
@@ -90,7 +93,7 @@ num_comp = size(W,2);
 
 %% Gradient maps %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-marginalizations = [find(whichMarg == 1, 2, 'first'), find(whichMarg == 3, 2, 'first')];
+marginalizations = [find(whichMarg == 1, 2, 'first'), find(whichMarg == 4, 2, 'first')];
 marginalizationsExplVar = explVar.componentVar(marginalizations);
 
 nRows = length(marginalizations);  % number of components
@@ -180,8 +183,8 @@ while sum(roundedD) < 100
     roundedD(ind) = roundedD(ind) + 1;
 end
 
-margColours = [23 100 171; 187 20 25; 150 150 150; 114 97 171]/256;
-margNames = {'Eye', 'Context', 'Interaction'};
+margColours = [23 100 171;  114 97 171; 187 20 25; 150 150 150]/256;
+margNames = {'Eye', 'Hand', 'Context', 'Interaction'};
 
 for i=1:length(d)
     margNamesPerc{i} = [margNames{i} ' ' num2str(roundedD(i)) '%'];
@@ -292,7 +295,7 @@ hold off;
 %% Subspace analysis
 eyeIdx     = find(whichMarg == 1);
 eyeIdx = eyeIdx(1:8);
-contextIdx = find(whichMarg == 2);
+contextIdx = find(whichMarg == 3);
 contextIdx = contextIdx(1:3);
 
 W_eye     = W(:, eyeIdx);      % neurons × 8

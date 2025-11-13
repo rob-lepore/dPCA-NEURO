@@ -2,7 +2,7 @@
 %%%%%%%%%%%%%%%%%% Calculate Firing Rates from data %%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [firingRates, trialNum] = A_general_calculate_firing_rates_dpca(data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name);
+function [firingRates, trialNum] = A_general_calculate_firing_rates_dpca(data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name, n_decisions);
 
 % Event Marker --> 16 events
 %   1)-,     2)KeyDown,      3)LED1,     4) Saccade-Off,  5)-,         6)-,        7)GO,         8) KeyUp,
@@ -13,7 +13,7 @@ Event_Marker.n16 = {'-', 'KeyDown', 'LED1', 'Saccade-Off', '-' , '-', 'GO', 'Key
 N = length(cells_in_Directory);  % number of neurons   --> neurons from MEF animals 
 T = sum(time_Window);            % number of time points
 S = 9;                           % number of stimuli   --> 9-led panel with fixed position
-D = 2;                           % number of decisions --> animal starting point (near-far)
+D = n_decisions;                           % number of decisions --> animal starting point (near-far)
 E = 10;                          % maximal number of trial repetitions (all trials should have the same length in time)
 
 %--------------------------------------------------------------------------
@@ -34,7 +34,7 @@ for cell = 1 :length(cells_in_Directory)
     event_Marker = find(strcmp(Event_Marker.n16, event_Name));
 
         % fprintf(['Cell #:' num2str(cell)])
-        for iHand_Position = 1 : 2  % we have two hand positions
+        for iHand_Position = 1 : D  % we have two hand positions
            % fprintf(['   Hand #: ' num2str(iHand_Position)])
 
             for iTarget_Position = 1 : 9  % we have nine target positions
