@@ -8,20 +8,48 @@ parse(p, varargin{:});
 hand_position = p.Results.hand_position;
 epochTimes = p.Results.epochTimes;
 
+if hand_position == 3
+    both_hands = 1;
+    combinedParams = ...
+        {{1, [1 4]}, {2, [2 4]}, {3, [3 4]}, {[1 3], [1 3 4]}, {[1 2], [1 2 4]}, {[2 3], [2 3 4]}};%, {[1 2 3], [1 2 3 4]}};
+    %     stimolo       mano       epoca         int. s/e          int. s/m          int. m/e           int. a tre
+    num_comp = 47; % 8 + 3 + 1 + 24 + 8 + 3
+    stim_marg_idx = 1;
+    hand_marg_idx = 2;
+    epoch_marg_idx = 3;
+    int_se_marg_idx = 4;
+    int_sm_marg_idx = 5;
+    int_me_marg_idx = 6;
+
+    margNames = {'Eye', 'Hand', 'Context', 'I. E/C', 'I. E/H', 'I. H/C', 'I. E/H/C' };
+    margColours = [23 100 171;  114 97 171; 187 20 25; 150 150 150; 120 110 18; 20 20 25; 200 50 200]/256;
+
+else
+    both_hands = 0;
+    combinedParams = {{1, [1 3]}, {2, [2 3]}, {[1 2], [1 2 3]}};
+    %                   stimolo     epoca         interazione
+    num_comp = 35; % 8 + 3 + 24
+    stim_marg_idx = 1;
+    epoch_marg_idx = 2;
+    int_se_marg_idx = 3;
+
+    margNames = {'Eye', 'Context', 'Interaction'};
+    margColours = [23 100 171; 187 20 25; 150 150 150]/256;
+
+end
 
 % File to load/save dPCA results
 data_save_file = "my_dpca_data";
 load_from_file = false; % If true, skip dPCA and load from file above
 
 epochNames = {'Fixation', 'Plan', 'Reach', 'Hold'};
-
+num_stimuli = 9;
 
 if ~load_from_file
     cells_in_Directory = dir(data_Path);
     cells_in_Directory ([1,2],:) = [];
 
     epochEvent = {'Saccade-Off', 'GO', 'KeyUp', 'TOUCH1'};
-    % epochTimes = [0 700; 500 200; 200 500; 0 700];   
     sDF_bin_Size = 100;              
     
     numEpochs = numel(epochEvent);
@@ -38,20 +66,23 @@ if ~load_from_file
         else
             [firingRates, trialNum] = A_general_calculate_firing_rates_dpca( ...
                 data_Path, cells_in_Directory, time_Window, sDF_bin_Size, event_Name, 2);
-            firingRates = squeeze(firingRates(:,:,hand_position,:,:));
+            if ~both_hands
+                firingRates = squeeze(firingRates(:,:,hand_position,:,:));
+            end
         end
 
         % Average over trials
-        firingRatesAverage = mean(firingRates, 4);        % neurons × stimuli × time
+        firingRatesAverage = mean(firingRates, 4 + both_hands);  % neurons × stimuli × time OR neurons × stimuli x decision × time
         firingRates_all{e} = firingRatesAverage;
     end
 
-    firingRates_dpca = cat(4, firingRates_all{:});
-    firingRates_dpca = permute(firingRates_dpca, [1 2 4 3]);
-        
-    combinedParams = {{1, [1 3]}, {2, [2 3]}, {[1 2], [1 2 3]}};
-
-    num_comp = 35;
+    firingRates_dpca = cat(4 + both_hands, firingRates_all{:});
+    if both_hands
+        firingRates_dpca = permute(firingRates_dpca, [1 2 3 5 4]);
+    else
+        firingRates_dpca = permute(firingRates_dpca, [1 2 4 3]);
+    end
+    
 
     [W,V,whichMarg] = dpca(firingRates_dpca, num_comp, ...
         'combinedParams', combinedParams);
@@ -81,16 +112,17 @@ else
 end
 
 
-timeMarg = find(whichMarg == 2);
+timeMarg = find(whichMarg == epoch_marg_idx);
 timeMarg = timeMarg(1:3);
 timeMargExplVar = explVar.componentVar(timeMarg);
 
-[num_neurons, num_stimuli, num_time_points] = size(firingRates_all{1});
-num_comp = size(W,2);
+% [num_neurons, num_stimuli, num_time_points] = size(firingRates_all{1});
+% num_comp = size(W,2);
 
 %% Gradient maps %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-marginalizations = [find(whichMarg == 1, 2, 'first'), find(whichMarg == 3, 2, 'first')];
+% two rows for stimulus, two rows for stimulus/epoch interaction
+marginalizations = [find(whichMarg == stim_marg_idx, 2, 'first'), find(whichMarg == int_se_marg_idx, 2, 'first')];
 marginalizationsExplVar = explVar.componentVar(marginalizations);
 
 nRows = length(marginalizations);  % number of components
@@ -160,8 +192,6 @@ ylabel('Component variance (%)')
 xlabel('Number of components')
 b = bar(explVar.margVar(:,1:num_comp_bars)' , 'stacked', 'BarWidth', 0.75);
 
-margColours = [23 100 171; 187 20 25; 150 150 150; 114 97 171]/256;
-
 for idx = 1:numel(b)
     b(idx).FaceColor = margColours(idx,:);
 end 
@@ -179,9 +209,6 @@ while sum(roundedD) < 100
     [~, ind] = max(d-roundedD);
     roundedD(ind) = roundedD(ind) + 1;
 end
-
-margColours = [23 100 171; 187 20 25; 150 150 150; 114 97 171]/256;
-margNames = {'Eye', 'Context', 'Interaction'};
 
 for i=1:length(d)
     margNamesPerc{i} = [margNames{i} ' ' num2str(roundedD(i)) '%'];
@@ -290,9 +317,9 @@ hold off;
 
 
 %% Subspace analysis
-eyeIdx     = find(whichMarg == 1);
+eyeIdx     = find(whichMarg == stim_marg_idx);
 eyeIdx = eyeIdx(1:8);
-contextIdx = find(whichMarg == 2);
+contextIdx = find(whichMarg == epoch_marg_idx);
 contextIdx = contextIdx(1:3);
 
 W_eye     = W(:, eyeIdx);      % neurons × 8
